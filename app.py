@@ -150,4 +150,4 @@ def get_stats():
 # Run the app
 # -------------------------------------------------------
 if __name__ == "__main__":
-    app.run(debug=True)  # debug=True shows helpful error messages while developing
+    app.run(debug=False) # debug=True shows helpful error messages while developing
