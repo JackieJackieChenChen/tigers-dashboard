@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Detroit Tigers Dashboard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0a1628;
+      color: #f0f0f0;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    /* ---- Header ---- */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 28px;
+      border-bottom: 2px solid #fa4616;
+      padding-bottom: 16px;
+    }
+    header h1 { font-size: 26px; font-weight: 700; }
+    header p  { color: #aaa; font-size: 14px; margin-top: 2px; }
+    .tiger-logo {
+      width: 52px; height: 52px;
+      background: #fa4616;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 28px;
+    }
+
+    /* ---- Grid layout ---- */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+    }
+    .card {
+      background: #112040;
+      border: 1px solid #1e3a6e;
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .card h2 {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: #fa4616;
+      margin-bottom: 14px;
+    }
+
+    /* ---- Score card ---- */
+    .scorebox {
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      padding: 12px 0;
+    }
+    .team-score { text-align: center; }
+    .team-name  { font-size: 13px; color: #aaa; margin-bottom: 4px; }
+    .score-num  { font-size: 48px; font-weight: 700; line-height: 1; }
+    .score-divider { font-size: 28px; color: #444; }
+    .game-status {
+      text-align: center;
+      font-size: 13px;
+      color: #fa4616;
+      margin-top: 10px;
+    }
+    .recent-game {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid #1e3a6e;
+      font-size: 14px;
+    }
+    .recent-game:last-child { border-bottom: none; }
+    .win  { color: #4caf50; font-weight: 600; }
+    .loss { color: #f44336; font-weight: 600; }
+
+    /* ---- Standings table ---- */
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th {
+      text-align: left;
+      color: #aaa;
+      font-weight: 500;
+      padding: 0 6px 8px;
+      border-bottom: 1px solid #1e3a6e;
+    }
+    th:not(:first-child) { text-align: center; }
+    td { padding: 7px 6px; border-bottom: 1px solid #0d1e38; }
+    td:not(:first-child) { text-align: center; }
+    tr.tigers-row td { color: #fa4616; font-weight: 600; }
+    tr:last-child td  { border-bottom: none; }
+
+    /* ---- Stats tabs ---- */
+    .tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+    .tab {
+      padding: 5px 14px;
+      border-radius: 20px;
+      border: 1px solid #1e3a6e;
+      background: transparent;
+      color: #aaa;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .tab.active { background: #fa4616; border-color: #fa4616; color: #fff; }
+
+    /* ---- Loading / error ---- */
+    .loading { color: #aaa; font-size: 14px; padding: 16px 0; }
+    .error   { color: #f44336; font-size: 14px; padding: 16px 0; }
+
+    /* ---- Streak badge ---- */
+    .streak {
+      display: inline-block;
+      font-size: 11px;
+      padding: 1px 6px;
+      border-radius: 8px;
+      background: #1e3a6e;
+    }
+    .streak.w { background: #1b3a1f; color: #4caf50; }
+    .streak.l { background: #3a1b1b; color: #f44336; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="tiger-logo">🐯</div>
+  <div>
+    <h1>Detroit Tigers</h1>
+    <p id="last-updated">Loading...</p>
+  </div>
+</header>
+
+<div class="grid">
+
+  <!-- Score Card -->
+  <div class="card" id="score-card">
+    <h2>Today's Game</h2>
+    <div class="loading">Fetching game data...</div>
+  </div>
+
+  <!-- Standings Card -->
+  <div class="card" id="standings-card">
+    <h2>AL Central Standings</h2>
+    <div class="loading">Fetching standings...</div>
+  </div>
+
+  <!-- Stats Card (full width) -->
+  <div class="card" style="grid-column: 1 / -1;" id="stats-card">
+    <h2>2025 Player Stats</h2>
+    <div class="tabs">
+      <button class="tab active" onclick="showTab('batting')">Batting</button>
+      <button class="tab" onclick="showTab('pitching')">Pitching</button>
+    </div>
+    <div id="batting-table"><div class="loading">Fetching stats...</div></div>
+    <div id="pitching-table" style="display:none"></div>
+  </div>
+
+</div>
+
+<script>
+  // The base URL of your Python backend
+  // When running locally this is http://localhost:5000
+  // When deployed on Render, replace with your Render URL
+  const API_BASE = window.location.origin;
+
+  // ---- Fetch and render score ----
+  async function loadScore() {
+    try {
+      const res  = await fetch(`${API_BASE}/api/score`);
+      const data = await res.json();
+      const card = document.getElementById("score-card");
+
+      if (data.today) {
+        const g = data.today;
+        const isTigersHome = g.home_team.includes("Tigers");
+        card.innerHTML = `
+          <h2>Today's Game</h2>
+          <div class="scorebox">
+            <div class="team-score">
+              <div class="team-name">${g.away_team}</div>
+              <div class="score-num">${g.away_score}</div>
+            </div>
+            <div class="score-divider">–</div>
+            <div class="team-score">
+              <div class="team-name">${g.home_team}</div>
+              <div class="score-num">${g.home_score}</div>
+            </div>
+          </div>
+          <div class="game-status">${g.status}${g.inning ? " · " + g.inning : ""}</div>
+          <div style="text-align:center;color:#aaa;font-size:12px;margin-top:8px">${g.venue}</div>
+        `;
+      } else if (data.recent.length > 0) {
+        // No game today — show recent results
+        let rows = data.recent.reverse().map(g => {
+          const tigers_score = g.home_team.includes("Tigers") ? g.home_score : g.away_score;
+          const opp_score    = g.home_team.includes("Tigers") ? g.away_score : g.home_score;
+          const opp          = g.home_team.includes("Tigers") ? g.away_team  : g.home_team;
+          const won          = tigers_score > opp_score;
+          return `<div class="recent-game">
+            <span>${opp}</span>
+            <span class="${won ? 'win' : 'loss'}">${won ? 'W' : 'L'} ${tigers_score}–${opp_score}</span>
+          </div>`;
+        }).join("");
+        card.innerHTML = `<h2>Recent Games</h2>${rows}`;
+      } else {
+        card.innerHTML = `<h2>Today's Game</h2><div class="loading">No game scheduled today.</div>`;
+      }
+    } catch (e) {
+      document.getElementById("score-card").innerHTML =
+        `<h2>Today's Game</h2><div class="error">Could not load game data.</div>`;
+    }
+  }
+
+  // ---- Fetch and render standings ----
+  async function loadStandings() {
+    try {
+      const res  = await fetch(`${API_BASE}/api/standings`);
+      const data = await res.json();
+      const card = document.getElementById("standings-card");
+
+      let rows = data.map(t => {
+        const isTigers = t.team.includes("Tigers");
+        const streakClass = t.streak.startsWith("W") ? "w" : "l";
+        return `<tr class="${isTigers ? 'tigers-row' : ''}">
+          <td>${isTigers ? "🐯 " : ""}${t.team.replace("Detroit ","").replace("Chicago ","").replace("Cleveland ","").replace("Kansas City ","").replace("Minnesota ","")}</td>
+          <td>${t.wins}</td>
+          <td>${t.losses}</td>
+          <td>${t.pct}</td>
+          <td>${t.gb}</td>
+          <td><span class="streak ${streakClass}">${t.streak}</span></td>
+        </tr>`;
+      }).join("");
+
+      card.innerHTML = `
+        <h2>AL Central Standings</h2>
+        <table>
+          <thead><tr><th>Team</th><th>W</th><th>L</th><th>PCT</th><th>GB</th><th>Streak</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    } catch (e) {
+      document.getElementById("standings-card").innerHTML =
+        `<h2>AL Central Standings</h2><div class="error">Could not load standings.</div>`;
+    }
+  }
+
+  // ---- Fetch and render player stats ----
+  async function loadStats() {
+    try {
+      const res  = await fetch(`${API_BASE}/api/stats`);
+      const data = await res.json();
+
+      // Batting table
+      let battingRows = data.batting.map(p => `
+        <tr>
+          <td>${p.name}</td>
+          <td>${p.avg}</td>
+          <td>${p.hr}</td>
+          <td>${p.rbi}</td>
+          <td>${p.hits}</td>
+        </tr>`).join("");
+      document.getElementById("batting-table").innerHTML = `
+        <table>
+          <thead><tr><th>Player</th><th>AVG</th><th>HR</th><th>RBI</th><th>H</th></tr></thead>
+          <tbody>${battingRows}</tbody>
+        </table>`;
+
+      // Pitching table
+      let pitchingRows = data.pitching.map(p => `
+        <tr>
+          <td>${p.name}</td>
+          <td>${p.era}</td>
+          <td>${p.wins}–${p.losses}</td>
+          <td>${p.strikeouts}</td>
+          <td>${p.innings}</td>
+        </tr>`).join("");
+      document.getElementById("pitching-table").innerHTML = `
+        <table>
+          <thead><tr><th>Player</th><th>ERA</th><th>W–L</th><th>K</th><th>IP</th></tr></thead>
+          <tbody>${pitchingRows}</tbody>
+        </table>`;
+    } catch (e) {
+      document.getElementById("batting-table").innerHTML =
+        `<div class="error">Could not load stats.</div>`;
+    }
+  }
+
+  function showTab(tab) {
+    document.getElementById("batting-table").style.display  = tab === "batting"  ? "" : "none";
+    document.getElementById("pitching-table").style.display = tab === "pitching" ? "" : "none";
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+    event.target.classList.add("active");
+  }
+
+  // ---- Load everything ----
+  document.getElementById("last-updated").textContent =
+    "Last updated: " + new Date().toLocaleTimeString();
+  loadScore();
+  loadStandings();
+  loadStats();
+</script>
+</body>
+</html>
